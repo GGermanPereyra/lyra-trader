@@ -1,91 +1,81 @@
-import streamlit as st
+    import streamlit as st
 import yfinance as yf
 import pandas as pd
-import feedparser
 import time
 
-st.set_page_config(page_title="Lyra Sentinel: Expert Advisor", layout="wide")
+st.set_page_config(page_title="Sentinel: Control Germán", layout="wide")
 
-def get_market_data():
-    # Tu ajuste de calibración actual
-    offset = 20.33
-    
+# --- FUNCIÓN DE DATOS CON CALIBRACIÓN ---
+def get_market_data(offset_manual):
     try:
-        # Intentamos descargar los datos con un margen de error más amplio
         ticker = yf.Ticker("GC=F")
         gold = ticker.history(period="1d", interval="1m")
-        
-        # Si la descarga falla o no hay suficientes velas para los indicadores
         if gold.empty or len(gold) < 30:
             return None
         
         df = gold.copy()
-        df['Close_Adj'] = df['Close'] - offset
+        # Aplicamos el ajuste que tú controlas desde el celu
+        df['Close_Adj'] = df['Close'] - offset_manual
         
-        # --- CÁLCULOS TÉCNICOS ---
-        # RSI
+        # RSI (14)
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         df['RSI'] = 100 - (100 / (1 + (gain / loss)))
         
-        # MACD
+        # MACD (12, 26, 9)
         df['EMA12'] = df['Close'].ewm(span=12, adjust=False).mean()
         df['EMA26'] = df['Close'].ewm(span=26, adjust=False).mean()
         df['MACD'] = df['EMA12'] - df['EMA26']
         df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
         
-        # Bollinger
+        # Bollinger (20)
         df['SMA20'] = df['Close_Adj'].rolling(window=20).mean()
         df['STD20'] = df['Close_Adj'].rolling(window=20).std()
         df['Upper'] = df['SMA20'] + (df['STD20'] * 2)
         df['Lower'] = df['SMA20'] - (df['STD20'] * 2)
         
         return df.iloc[-1]
-    except Exception as e:
+    except:
         return None
 
-# --- INTERFAZ ---
-data = get_market_data()
+# --- INTERFAZ DEL CELULAR ---
+st.title("🛡️ Sentinel: Mando Germán")
 
-st.title("🛡️ Lyra Sentinel: Niveles Operativos")
+# CALIBRADOR EN VIVO: Si ves diferencia, mueves esto
+with st.sidebar:
+    st.header("⚙️ Ajuste Real")
+    # El valor 11.09 es el que calculamos para tus $5186.11 actuales
+    ajuste = st.slider("Calibrar Precio", 5.0, 25.0, 11.09, step=0.01)
+    st.write(f"Offset actual: {ajuste}")
+
+data = get_market_data(ajuste)
 
 if data is not None:
     precio = round(data['Close_Adj'], 2)
     rsi_val = round(data['RSI'], 2)
     macd_alcista = data['MACD'] > data['Signal']
     
-    # Niveles de salida sugeridos
-    tp_compra = round(data['Upper'], 2)
-    sl_compra = round(data['Lower'] - 5, 2)
-    tp_venta = round(data['Lower'], 2)
-    sl_venta = round(data['Upper'] + 5, 2)
-
-    # SEMÁFORO DE SEÑALES
-    if rsi_val < 35 and macd_alcista:
+    # SEÑAL DINÁMICA
+    if rsi_val > 75: # Sobrecompra fuerte como la de ahora (78.24)
+        st.error(f"⚠️ SEÑAL: VENTA FUERTE (RSI: {rsi_val})")
+        st.metric("PRECIO ACTUAL", f"${precio}")
+        st.write(f"Salida sugerida (TP): ${round(data['Lower'], 2)}")
+    elif rsi_val < 30:
         st.success(f"🚀 SEÑAL: COMPRA (RSI: {rsi_val})")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("ENTRADA", f"${precio}")
-        c2.metric("TAKE PROFIT", f"${tp_compra}")
-        c3.metric("STOP LOSS", f"${sl_compra}")
-    elif rsi_val > 70 and not macd_alcista:
-        st.error(f"⚠️ SEÑAL: VENTA (RSI: {rsi_val})")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("ENTRADA", f"${precio}")
-        c2.metric("TAKE PROFIT", f"${tp_venta}")
-        c3.metric("STOP LOSS", f"${sl_venta}")
+        st.metric("PRECIO ACTUAL", f"${precio}")
+        st.write(f"Salida sugerida (TP): ${round(data['Upper'], 2)}")
     else:
-        st.warning(f"⏳ ESPERAR: Mercado en calma (RSI: {rsi_val})")
+        st.warning(f"⏳ ESPERAR (RSI: {rsi_val})")
+        st.metric("PRECIO ACTUAL", f"${precio}")
 
     st.divider()
-    st.write(f"📊 **Estado:** ORO en ${precio} | MACD {'Alcista ✅' if macd_alcista else 'Bajista ❌'}")
+    st.write(f"📊 **Calibración:** Si el precio no es ${precio}, mueve el slider lateral.")
 else:
-    # Si falla, mostramos un aviso amigable y reintentamos rápido
-    st.info("🔄 Lyra está reconectando con el mercado de Ginebra...")
+    st.info("🔄 Reconectando con el mercado...")
     time.sleep(5)
     st.rerun()
 
-# Refresco cada 30 segundos
 time.sleep(25)
 st.rerun()
-    
+        
