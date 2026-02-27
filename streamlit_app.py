@@ -7,7 +7,7 @@ import time
 st.set_page_config(page_title="Lyra Sentinel: Expert Advisor", layout="wide")
 
 def get_market_data():
-    offset = 18.5
+    offset = 20.33
     gold = yf.Ticker("GC=F").history(period="1d", interval="1m")
     if gold.empty: return None
     
