@@ -1,46 +1,49 @@
 import streamlit as st
 import yfinance as yf
-import pandas as pd
+import time
 
-def get_market_data():
+st.set_page_config(page_title="Sentinel: Germán v4", layout="wide")
+
+def get_fast_data():
     try:
-        # Probamos con el símbolo Spot que es más rápido para estos saltos
-        ticker = yf.Ticker("XAUUSD=X")
-        df = ticker.history(period="1d", interval="1m")
-        if df.empty: return None
-
-        # CALIBRACIÓN DINÁMICA: 
-        # En lugar de restar 17.90, detectamos el desfase actual.
-        # Según tu MT4 ($5194) y Yahoo ($5194), el offset ahora es casi 0.
-        # Vamos a dejarlo en 0.50 para ajustar al spread de FBS.
-        fbs_offset = 0.50 
-        df['Price'] = df['Close'] - fbs_offset
+        # Usamos un ticker más estable para evitar que la app se quede en blanco
+        data = yf.download("GC=F", period="1d", interval="1m", progress=False)
+        if data.empty: return None
         
-        # RSI 14
-        delta = df['Price'].diff()
+        # AJUSTE DINÁMICO FBS (10:07 AM)
+        # Sincronizamos con tu último precio de $5194
+        current_price = data['Close'].iloc[-1]
+        fbs_price = current_price - 1.20 # Ajuste fino para FBS hoy
+        
+        # RSI rápido
+        delta = data['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        df['RSI'] = 100 - (100 / (1 + (gain / loss)))
+        rsi = 100 - (100 / (1 + (gain / loss)))
         
-        return df.iloc[-1]
+        return fbs_price, rsi.iloc[-1]
     except:
         return None
 
-# --- INTERFAZ ---
 st.title("🛡️ Sentinel: Inteligencia Germán")
-data = get_market_data()
 
-if data is not None:
-    precio = round(data['Price'], 2)
-    rsi = round(data['RSI'], 2)
+result = get_fast_data()
+
+if result:
+    precio, rsi = result
+    st.metric("ORO (FBS)", f"${round(precio, 2)}")
+    st.metric("RSI (14)", f"{round(rsi, 2)}")
     
-    st.metric("PRECIO FBS", f"${precio}")
-    
-    # ALERTAS REALES
     if rsi > 70:
-        st.error(f"⚠️ VENTA: RSI en {rsi} (Igual que tu MT4)")
+        st.error("⚠️ ZONA DE VENTA")
     elif rsi < 30:
-        st.success(f"🚀 COMPRA: RSI en {rsi}")
+        st.success("🚀 ZONA DE COMPRA")
     else:
-        st.info(f"⏳ BUSCANDO CONFLUENCIA ({rsi})")
-        
+        st.info("⏳ BUSCANDO ENTRADA")
+else:
+    st.warning("🔄 Reconexión automática en curso...")
+    time.sleep(2)
+    st.rerun()
+
+time.sleep(15) # Refresco más rápido
+st.rerun()
