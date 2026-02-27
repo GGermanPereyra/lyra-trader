@@ -1,81 +1,51 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import time
 
-st.set_page_config(page_title="Sentinel: Control Germán", layout="wide")
+st.set_page_config(page_title="Sentinel: FBS Edition", layout="wide")
 
-# --- FUNCIÓN DE DATOS CON CALIBRACIÓN ---
-def get_market_data(offset_manual):
+def get_fbs_data():
     try:
-        ticker = yf.Ticker("GC=F")
+        # XAUUSD=X suele ser más parecido al precio de FBS que los Futuros
+        ticker = yf.Ticker("XAUUSD=X")
         gold = ticker.history(period="1d", interval="1m")
-        if gold.empty or len(gold) < 30:
+        
+        if gold.empty:
             return None
-        
+            
         df = gold.copy()
-        # Aplicamos el ajuste que tú controlas desde el celu
-        df['Close_Adj'] = df['Close'] - offset_manual
         
-        # RSI (14)
-        delta = df['Close'].diff()
+        # AJUSTE ESPECÍFICO PARA FBS
+        # Basado en tu captura, FBS está ~11.09 puntos por debajo del mercado internacional
+        offset_fbs = 11.09
+        df['Close_Adj'] = df['Close'] - offset_fbs
+        
+        # RSI con la sensibilidad de FBS
+        delta = df['Close_Adj'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         df['RSI'] = 100 - (100 / (1 + (gain / loss)))
-        
-        # MACD (12, 26, 9)
-        df['EMA12'] = df['Close'].ewm(span=12, adjust=False).mean()
-        df['EMA26'] = df['Close'].ewm(span=26, adjust=False).mean()
-        df['MACD'] = df['EMA12'] - df['EMA26']
-        df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-        
-        # Bollinger (20)
-        df['SMA20'] = df['Close_Adj'].rolling(window=20).mean()
-        df['STD20'] = df['Close_Adj'].rolling(window=20).std()
-        df['Upper'] = df['SMA20'] + (df['STD20'] * 2)
-        df['Lower'] = df['SMA20'] - (df['STD20'] * 2)
         
         return df.iloc[-1]
     except:
         return None
 
-# --- INTERFAZ DEL CELULAR ---
-st.title("🛡️ Sentinel: Mando Germán")
-
-# CALIBRADOR EN VIVO: Si ves diferencia, mueves esto
-with st.sidebar:
-    st.header("⚙️ Ajuste Real")
-    # El valor 11.09 es el que calculamos para tus $5186.11 actuales
-    ajuste = st.slider("Calibrar Precio", 5.0, 25.0, 11.09, step=0.01)
-    st.write(f"Offset actual: {ajuste}")
-
-data = get_market_data(ajuste)
+st.title("🛡️ Sentinel: Conexión FBS")
+data = get_fbs_data()
 
 if data is not None:
-    precio = round(data['Close_Adj'], 2)
-    rsi_val = round(data['RSI'], 2)
-    macd_alcista = data['MACD'] > data['Signal']
+    precio_fbs = round(data['Close_Adj'], 2)
+    rsi_fbs = round(data['RSI'], 2)
     
-    # SEÑAL DINÁMICA
-    if rsi_val > 75: # Sobrecompra fuerte como la de ahora (78.24)
-        st.error(f"⚠️ SEÑAL: VENTA FUERTE (RSI: {rsi_val})")
-        st.metric("PRECIO ACTUAL", f"${precio}")
-        st.write(f"Salida sugerida (TP): ${round(data['Lower'], 2)}")
-    elif rsi_val < 30:
-        st.success(f"🚀 SEÑAL: COMPRA (RSI: {rsi_val})")
-        st.metric("PRECIO ACTUAL", f"${precio}")
-        st.write(f"Salida sugerida (TP): ${round(data['Upper'], 2)}")
-    else:
-        st.warning(f"⏳ ESPERAR (RSI: {rsi_val})")
-        st.metric("PRECIO ACTUAL", f"${precio}")
+    col1, col2 = st.columns(2)
+    col1.metric("PRECIO FBS (Estimado)", f"${precio_fbs}")
+    col2.metric("RSI FBS", f"{rsi_fbs}")
 
-    st.divider()
-    st.write(f"📊 **Calibración:** Si el precio no es ${precio}, mueve el slider lateral.")
+    # Alerta basada en tu RSI de 78.24
+    if rsi_fbs > 75:
+        st.error("⚠️ FBS: SOBRECOMPRA - POSIBLE VENTA")
+    elif rsi_fbs < 30:
+        st.success("🚀 FBS: SOBREVENTA - POSIBLE COMPRA")
 else:
-    st.info("🔄 Reconectando con el mercado...")
-    time.sleep(5)
-    st.rerun()
-
-time.sleep(25)
-st.rerun()
+    st.warning("Buscando señal de FBS...")
         
