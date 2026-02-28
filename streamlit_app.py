@@ -1,57 +1,57 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import time
 
-st.set_page_config(page_title="Sentinel: FBS Germán", layout="wide")
+st.set_page_config(page_title="Recuperación Germán", layout="wide")
 
-def get_clean_data():
+def get_market_status():
     try:
-        # Descarga rápida y silenciosa
-        df = yf.download("GC=F", period="1d", interval="1m", progress=False)
-        if df.empty or len(df) < 20:
-            return None
+        # Usamos datos directos sin filtros pesados para evitar que se cuelgue
+        gold = yf.download("GC=F", period="1d", interval="1m", progress=False)
+        if gold.empty: return None
         
-        # Ajuste para FBS (Basado en tu precio de $5203)
-        # El mercado está muy volátil, el offset hoy es volátil.
-        current_close = float(df['Close'].iloc[-1])
+        price = gold['Close'].iloc[-1]
         
-        # Cálculo de RSI manual para evitar errores de librería
-        delta = df['Close'].diff()
-        up = delta.clip(lower=0)
-        down = -1 * delta.clip(upper=0)
-        ema_up = up.rolling(window=14).mean()
-        ema_down = down.rolling(window=14).mean()
-        rs = ema_up / ema_down
-        rsi_val = 100 - (100 / (1 + rs))
+        # RSI 14 Rápido
+        delta = gold['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+        rsi = 100 - (100 / (1 + (gain / loss))).iloc[-1]
         
-        return current_close, float(rsi_val.iloc[-1])
+        return price, rsi
     except:
         return None
 
-st.title("🛡️ Sentinel: Mando Germán")
+st.title("🛡️ Sistema de Protección Germán")
 
-data = get_clean_data()
+# --- CALCULADORA DE LOTAJE PARA CUENTAS PEQUEÑAS ---
+with st.sidebar:
+    st.header("💰 Gestión de Capital")
+    balance = st.number_input("Saldo Actual ($)", value=20.0)
+    riesgo = st.slider("% de Riesgo", 1, 5, 2)
+    st.info(f"Sugerencia: No operes más de ${round(balance * (riesgo/100), 2)} por trade.")
 
-if data:
-    precio, rsi = data
+status = get_market_status()
+
+if status:
+    precio, rsi = status
+    # Ajuste para FBS basado en el último desfase visto
+    precio_fbs = precio - 1.20 
     
-    # Formato limpio sin símbolos de Ticker en pantalla
     col1, col2 = st.columns(2)
-    col1.metric("PRECIO ORO", f"${round(precio, 2)}")
-    col2.metric("RSI (14)", f"{round(rsi, 2)}")
-    
-    # Lógica de alertas simplificada para evitar el ValueError
-    if rsi > 70:
-        st.error("⚠️ SOBRECOMPRA: POSIBLE VENTA")
-    elif rsi < 30:
-        st.success("🚀 SOBREVENTA: POSIBLE COMPRA")
-    else:
-        st.info("⏳ MERCADO EN MOVIMIENTO")
-else:
-    st.warning("🔄 Sincronizando con FBS...")
-    time.sleep(2)
-    st.rerun()
+    col1.metric("ORO (FBS)", f"${round(precio_fbs, 2)}")
+    col2.metric("RSI ACTUAL", f"{round(rsi, 2)}")
 
-time.sleep(10)
-st.rerun()
+    # --- LÓGICA DE PROTECCIÓN ---
+    if rsi > 75:
+        st.error("⚠️ ALTA PROBABILIDAD DE CAÍDA. Busca ventas pequeñas.")
+    elif rsi < 25:
+        st.success("🚀 ORO EN PISO. Busca compras pequeñas.")
+    else:
+        st.warning("⏳ ZONA NEUTRAL. Si perdiste hoy, NO ENTRES AQUÍ.")
+
+    st.divider()
+    st.write("📋 **Regla de Oro:** Si el RSI no está en los extremos, las cuentas de $20 o $50 se queman por el ruido del mercado.")
+else:
+    st.error("⚠️ Error de conexión. No operes hasta que carguen los datos.")
+    
