@@ -1,91 +1,115 @@
 import streamlit as st
+import yfinance as yf
 import pandas as pd
-import numpy as np
+import pandas_ta as ta
 import time
 from datetime import datetime, timedelta
 
-# --- CONFIGURACIÓN DE PÁGINA PARA MÓVIL ---
-st.set_page_config(page_title="Sistema de Protección Alemán", layout="centered")
+# --- CONFIGURACIÓN DE PÁGINA PARA EL CELULAR ---
+st.set_page_config(page_title="Protección Alemana XAU", layout="centered")
 
-# --- 1. LÓGICA DE DATOS (SIMULADA PARA EJECUCIÓN INMEDIATA) ---
-# Aquí conectarás tu API de FBS/MetaTrader en el futuro
-def obtener_datos_mercado():
-    precio_oro = 2345.50 + np.random.uniform(-5, 5)
-    rsi = np.random.uniform(20, 80)
-    sma_200 = 2340.00
-    dxy = 104.20 + np.random.uniform(-0.1, 0.1)
-    return precio_oro, rsi, sma_200, dxy
+# --- 1. OBTENCIÓN DE DATOS REALES (MARZO 2026) ---
+def obtener_datos_vivos():
+    try:
+        # Extraemos Oro (GC=F es el futuro, XAUUSD=X es el spot)
+        # Usamos XAUUSD=X para que coincida mejor con brokers como FBS
+        oro = yf.download(tickers="XAUUSD=X", period="1d", interval="1m", progress=False)
+        dxy = yf.download(tickers="DX-Y.NYB", period="1d", interval="1m", progress=False)
+        
+        if not oro.empty:
+            precio_actual = oro['Close'].iloc[-1]
+            
+            # Calculamos RSI real usando pandas_ta (periodo 14)
+            oro['RSI'] = ta.rsi(oro['Close'], length=14)
+            rsi_actual = oro['RSI'].iloc[-1]
+            
+            # Calculamos SMA 200 (usamos más datos para la media móvil)
+            oro_hist = yf.download(tickers="XAUUSD=X", period="5d", interval="15m", progress=False)
+            sma_200 = oro_hist['Close'].rolling(window=200).mean().iloc[-1]
+            
+            precio_dxy = dxy['Close'].iloc[-1] if not dxy.empty else 104.25
+            
+            return precio_actual, rsi_actual, sma_200, precio_dxy
+    except Exception as e:
+        st.error(f"Error de conexión: {e}")
+        return None, None, None, None
 
-# --- 2. CALENDARIO DE NOTICIAS DE IMPACTO ---
-# En una versión avanzada, esto vendría de una API de noticias
-noticias_hoy = [
-    {"evento": "NFP (Nóminas EE.UU.)", "hora": "10:30", "impacto": "Alto"},
-    {"evento": "Discurso de la FED", "hora": "14:00", "impacto": "Alto"}
+# --- 2. FILTRO DE NOTICIAS (CALENDARIO DE RIESGO) ---
+# Nota: En producción, esto debería conectar con una API de noticias real
+noticias_impacto = [
+    {"evento": "NFP (Nóminas no agrícolas)", "hora": "10:30", "impacto": "Alto"},
+    {"evento": "Decisión de Tasas FED", "hora": "15:00", "impacto": "Alto"}
 ]
 
-def verificar_riesgo_noticias(noticias):
+def verificar_seguridad_noticias(noticias):
     ahora = datetime.now()
     for n in noticias:
         h_noticia = datetime.strptime(n['hora'], "%H:%M").replace(
             year=ahora.year, month=ahora.month, day=ahora.day
         )
-        if h_noticia - timedelta(minutes=45) <= ahora <= h_noticia + timedelta(minutes=20):
+        # Bloqueo 45 min antes por volatilidad previa
+        if h_noticia - timedelta(minutes=45) <= ahora <= h_noticia + timedelta(minutes=15):
             return True, n['evento']
     return False, None
 
-# --- 3. INTERFAZ DE USUARIO (UI) ---
-st.title("🛡️ Oro: Protección Alemana")
-st.write(f"**Capital:** $25.00 USD | **Lote Sugerido:** 0.01")
+# --- 3. INTERFAZ VISUAL ---
+st.title("🛡️ Sistema de Protección Alemana")
+st.write(f"**Capital de Trabajo:** $25.00 USD | **Lote:** 0.01")
 
-precio, rsi, sma, dxy = obtener_datos_mercado()
-hay_noticia, evento = verificar_riesgo_noticias(noticias_hoy)
+precio, rsi, sma, dxy = obtener_datos_vivos()
+hay_riesgo, evento = verificar_seguridad_noticias(noticias_impacto)
 
-# --- COLUMNAS DE MONITOREO ---
-col1, col2 = st.columns(2)
-with col1:
-    st.metric("XAU/USD (ORO)", f"{precio:.2f}")
-    st.metric("RSI (1M)", f"{rsi:.1f}")
-with col2:
-    st.metric("DXY (Dólar)", f"{dxy:.2f}")
-    st.write(f"SMA 200: {sma:.2f}")
+if precio:
+    # Métricas principales
+    c1, c2 = st.columns(2)
+    with c1:
+        st.metric("ORO (XAU/USD)", f"${precio:,.2f}")
+        st.metric("RSI REAL", f"{rsi:.2f}")
+    with c2:
+        st.metric("DXY (Dólar)", f"{dxy:.2f}")
+        st.write(f"SMA 200: ${sma:,.2f}")
 
-st.divider()
+    st.divider()
 
-# --- 4. EL VEREDICTO (PREVISIÓN CLARA) ---
-st.subheader("📢 Veredicto del Sistema")
+    # --- 4. VEREDICTO CLARO ---
+    st.subheader("📢 Veredicto del Sistema")
+    
+    # Lógica de decisión segura
+    if hay_riesgo:
+        st.error(f"❌ BLOQUEADO: {evento} inminente. Riesgo de barrido.")
+        decision = "ESPERAR"
+    elif rsi < 32 and precio > sma:
+        st.success("🟢 COMPRA: Sobreventa en tendencia alcista.")
+        decision = "COMPRAR"
+    elif rsi > 68 and precio < sma:
+        st.warning("🔴 VENTA: Sobrecompra en tendencia bajista.")
+        decision = "VENDER"
+    else:
+        st.info("🟡 ESPERAR: No hay confluencia segura.")
+        decision = "ESPERAR"
 
-if hay_noticia:
-    st.error(f"🚫 BLOQUEADO: {evento} inminente. No operar.")
-    veredicto = "ESPERAR"
-    color_boton = "secondary"
-elif rsi < 30 and precio > sma:
-    st.success("🟢 COMPRA FUERTE: Tendencia alcista + Precio bajo.")
-    veredicto = "COMPRAR"
-elif rsi > 70 and precio < sma:
-    st.warning("🔴 VENTA FUERTE: Tendencia bajista + Precio caro.")
-    veredicto = "VENDER"
+    # --- 5. GESTIÓN DE RIESGO PARA 25 USD ---
+    st.divider()
+    st.write("### 🧮 Calculadora de Riesgo Estricta")
+    distancia_sl = st.slider("Distancia de Stop Loss (Pips)", 10, 80, 30)
+    riesgo_dinero = distancia_sl * 0.1 # Para lote 0.01 en oro
+
+    if riesgo_dinero > 1.25: # Más del 5% de la cuenta
+        st.error(f"Riesgo Excesivo: ${riesgo_dinero:.2f} (Supera el 5% de tus $25)")
+    else:
+        st.write(f"Pérdida si toca SL: **${riesgo_dinero:.2f}**")
+
+    # --- BOTÓN DE ACCIÓN ---
+    if decision != "ESPERAR":
+        if st.button(f"🚀 ENVIAR ORDEN DE {decision} A FBS"):
+            st.write("Intentando conectar con MetaTrader 4...")
+            # Aquí irá la lógica de ejecución real que configuraremos después
+    else:
+        st.button("🔍 Buscando entrada segura...", disabled=True)
+
 else:
-    st.info("🟡 ESPERAR: No hay confluencia clara de indicadores.")
-    veredicto = "ESPERAR"
+    st.warning("Cargando datos del mercado...")
 
-# --- 5. GESTIÓN DE RIESGO REALISTA ---
-st.divider()
-st.write("### 🧮 Calculadora de Riesgo (25 USD)")
-stop_loss_pips = st.slider("Pips de Stop Loss", 10, 100, 30)
-riesgo_usd = (stop_loss_pips * 0.1) # Cálculo para lote 0.01 en Oro
-
-if riesgo_usd > 2.5: # Si arriesgas más del 10% de la cuenta
-    st.error(f"Riesgo muy alto: ${riesgo_usd:.2f} (Cuidado con tus 25 USD)")
-else:
-    st.write(f"Pérdida potencial: **${riesgo_usd:.2f}**")
-
-# --- BOTÓN DE ACCIÓN ---
-if veredicto != "ESPERAR":
-    if st.button(f"🚀 EJECUTAR {veredicto} EN FBS"):
-        st.write("Conectando con MetaTrader... Enviando orden 0.01")
-else:
-    st.button("🚀 Buscando oportunidad...", disabled=True)
-
-# Auto-refresh cada 10 segundos para ver el precio en el cel
-time.sleep(10)
+# Actualización automática cada 15 segundos para no saturar la API gratuita
+time.sleep(15)
 st.rerun()
