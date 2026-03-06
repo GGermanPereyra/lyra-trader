@@ -3,18 +3,19 @@ import yfinance as yf
 import pandas as pd
 import time
 
-# --- CONFIGURACIÓN PARA GERMÁN ---
-st.set_page_config(page_title="Protección Alemana", layout="centered")
+# --- TITULO PERSONALIZADO ---
+st.set_page_config(page_title="Monitor de Trading - Germán", layout="centered")
 
-def obtener_precio_real():
+def obtener_datos_oro():
     try:
-        # Intentamos descargar el Oro (XAUUSD=X)
-        data = yf.download("XAUUSD=X", period="1d", interval="1m", progress=False)
-        if not data.empty:
-            precio = data['Close'].iloc[-1]
+        # Intentamos obtener datos del Oro (XAUUSD=X)
+        # Cambiamos a un periodo de 1 día con intervalo de 2 minutos para mayor estabilidad
+        df = yf.download("XAUUSD=X", period="1d", interval="2m", progress=False)
+        if not df.empty:
+            precio = df['Close'].iloc[-1]
             
-            # Cálculo de RSI manual (sin librerías extras)
-            delta = data['Close'].diff()
+            # Cálculo de RSI manual
+            delta = df['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
             rs = gain / loss
@@ -26,37 +27,32 @@ def obtener_precio_real():
     return None, None
 
 # --- INTERFAZ ---
-st.title("🛡️ Protección Alemana")
-st.write(f"**Germán**, monitoreando tus $25.00 USD")
+st.title("📊 Monitor de Oro (XAU/USD)")
+st.write(f"Cuenta de **Germán** | Capital: $25.00 USD")
 
-precio, rsi = obtener_precio_real()
+precio, rsi = obtener_datos_oro()
 
-if precio is not None:
-    # Mostramos el precio real de MetaTrader
-    st.metric("XAU/USD (ORO)", f"${precio:,.2f}")
-    st.metric("RSI (1M)", f"{rsi:.2f}")
+if precio:
+    # Mostramos los valores actuales
+    st.metric("Precio del Oro", f"${precio:,.2f}")
+    st.metric("Fuerza del Mercado (RSI)", f"{rsi:.2f}")
     
     st.divider()
     
-    # --- VEREDICTO SIMPLE Y SEGURO ---
-    st.subheader("📢 Veredicto")
+    # --- LÓGICA DE TRADING ---
+    # Según tu MetaTrader, el RSI actual está cerca de 56.69 (Zona Neutral)
     if rsi < 30:
-        st.success("🟢 COMPRA: Sobreventa detectada.")
+        st.success("🟢 OPORTUNIDAD: El precio está bajo (Sobreventa).")
     elif rsi > 70:
-        st.warning("🔴 VENTA: Sobrecompra detectada.")
+        st.warning("🔴 RIESGO: El precio está muy alto (Sobrecompra).")
     else:
-        st.info("🟡 ESPERAR: Mercado en zona neutral.")
-
-    # --- RIESGO ---
-    st.divider()
-    sl_pips = st.slider("Pips de Stop Loss", 10, 50, 30)
-    st.write(f"Pérdida potencial: **${sl_pips * 0.1:.2f} USD**")
+        st.info("🟡 ESPERAR: El mercado está tranquilo. No arriesgues tus $25.")
 
 else:
-    st.warning("🔄 Sincronizando con el servidor... Reintentando en 5 segundos.")
+    st.warning("🔄 Buscando conexión con el mercado... Esperá un momento.")
     time.sleep(5)
     st.rerun()
 
-# Refresco cada 30 segundos para no saturar la conexión del cel
+# Actualizar cada 30 segundos
 time.sleep(30)
 st.rerun()
