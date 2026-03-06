@@ -1,68 +1,24 @@
-import streamlit as st
-import yfinance as yf
+import requests
 import pandas as pd
-import time
+from datetime import datetime
 
-st.set_page_config(page_title="Sentinel: Protección Germán", layout="wide")
-
-def get_market_data():
-    try:
-        # Descarga silenciosa y rápida
-        ticker = yf.Ticker("GC=F")
-        df = ticker.history(period="1d", interval="1m")
-        
-        if df.empty or len(df) < 15:
-            return None
-            
-        # Limpieza de datos para evitar el ValueError
-        last_price = float(df['Close'].iloc[-1])
-        
-        # Cálculo manual de RSI para mayor estabilidad
-        delta = df['Close'].diff()
-        up = delta.clip(lower=0).rolling(window=14).mean()
-        down = -1 * delta.clip(upper=0).rolling(window=14).mean()
-        rs = up / down
-        rsi_val = 100 - (100 / (1 + rs))
-        current_rsi = float(rsi_val.iloc[-1])
-        
-        return last_price, current_rsi
-    except:
-        return None
-
-st.title("🛡️ Sistema de Protección Germán")
-
-# --- GESTIÓN DE RIESGO EN BARRA LATERAL ---
-with st.sidebar:
-    st.header("💰 Control de Capital")
-    saldo = st.number_input("Saldo Actual ($)", value=20.0, step=1.0)
-    st.write(f"Riesgo Máx (2%): **${round(saldo * 0.02, 2)}**")
-    st.warning("Regla: Si pierdes 2 operaciones seguidas, apaga la app.")
-
-data = get_market_data()
-
-if data:
-    precio, rsi = data
-    # Ajuste FBS dinámico para compensar el desfase que vimos hoy
-    precio_fbs = precio - 1.50 
+def obtener_noticias_impacto():
+    # Usamos una API gratuita de calendario (ejemplo conceptual con FinancialModelingPrep o un scraper)
+    # Lo ideal es filtrar por moneda 'USD' y relevancia 'High' (3 estrellas/toros)
+    url = "https://site.financialmodelingprep.com/api/v3/economic_calendar?from=2026-03-06&to=2026-03-06&apikey=TU_API_KEY"
     
-    col1, col2 = st.columns(2)
-    col1.metric("ORO (FBS)", f"${round(precio_fbs, 2)}")
-    col2.metric("RSI ACTUAL", f"{round(rsi, 2)}")
+    response = requests.get(url)
+    if response.status_code == 200:
+        eventos = response.json()
+        # Filtramos solo lo que afecta al Dólar (y por ende al Oro) de alto impacto
+        noticias_peligrosas = [e for e in eventos if e['currency'] == 'USD' and e['impact'] == 'High']
+        return noticias_peligrosas
+    return []
 
-    # --- LÓGICA DE ALERTA REFORZADA ---
-    if rsi > 78:
-        st.error("⚠️ VENTA FUERTE: Mercado muy agotado.")
-    elif rsi < 22:
-        st.success("🚀 COMPRA FUERTE: Posible rebote.")
-    else:
-        st.info("⏳ BUSCANDO OPORTUNIDAD SEGURA")
-    
-    st.caption(f"Sincronizado: {time.strftime('%H:%M:%S')}")
-else:
-    st.error("🔄 Error de datos: El mercado está muy rápido. Reintentando...")
-    time.sleep(2)
-    st.rerun()
-
-time.sleep(15)
-st.rerun()
+# En tu interfaz de Streamlit:
+noticias = obtener_noticias_impacto()
+if noticias:
+    st.error(f"⚠️ ¡CUIDADO! Hay {len(noticias)} noticias de alto impacto hoy para el USD.")
+    for n in noticias:
+        st.write(f"📌 {n['event']} a las {n['date']}")
         
