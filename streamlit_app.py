@@ -1,88 +1,66 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import pandas_ta as ta
 import time
-from datetime import datetime
 
-# --- CONFIGURACIÓN PARA MÓVIL ---
-st.set_page_config(page_title="Protección Alemana XAU", layout="centered")
+# --- CONFIGURACIÓN ---
+st.set_page_config(page_title="Protección Alemana", layout="centered")
 
-def obtener_datos_seguros():
+def obtener_datos_limpios():
     try:
-        # Descargamos Oro (XAUUSD) y Dólar (DXY)
-        # Usamos un periodo de 2 días para asegurar que el RSI tenga datos suficientes
-        oro = yf.download("XAUUSD=X", period="2d", interval="1m", progress=False)
-        dxy = yf.download("DX-Y.NYB", period="2d", interval="1m", progress=False)
+        # Traemos datos del Oro (XAUUSD) de los últimos 5 días
+        df = yf.download("XAUUSD=X", period="5d", interval="1m", progress=False)
+        if df.empty: return None
         
-        if not oro.empty and len(oro) > 14:
-            precio_actual = oro['Close'].iloc[-1]
-            
-            # Cálculo del RSI Real
-            oro['RSI'] = ta.rsi(oro['Close'], length=14)
-            rsi_actual = oro['RSI'].iloc[-1]
-            
-            # Media Móvil 200 (Tendencia)
-            # Usamos un periodo más largo para la SMA
-            hist_sma = yf.download("XAUUSD=X", period="5d", interval="15m", progress=False)
-            sma_200 = hist_sma['Close'].rolling(window=200).mean().iloc[-1]
-            
-            val_dxy = dxy['Close'].iloc[-1] if not dxy.empty else 104.20
-            
-            return precio_actual, rsi_actual, sma_200, val_dxy
-    except Exception as e:
-        return None, None, None, None
-    return None, None, None, None
+        precio = df['Close'].iloc[-1]
+        
+        # Cálculo manual del RSI (14) para evitar errores de librerías
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs.iloc[-1]))
+        
+        # SMA 200 para tendencia (usando cierres de 1 minuto)
+        sma = df['Close'].rolling(window=200).mean().iloc[-1]
+        
+        return precio, rsi, sma
+    except:
+        return None
 
-# --- INTERFAZ VISUAL ---
-st.title("🛡️ Protección Alemana")
-st.write(f"**Capital:** $25.00 USD | **Lote Sugerido:** 0.01")
+# --- INTERFAZ ---
+st.title("🛡️ Sistema de Protección Alemana")
+st.write(f"**Capital:** $25.00 USD | **Estado:** Monitoreando ORO")
 
-# Intentamos obtener los datos
-resultado = obtener_datos_seguros()
+datos = obtener_datos_limpios()
 
-if resultado[0] is not None:
-    precio, rsi, sma, dxy = resultado
+if datos:
+    precio, rsi, sma = datos
     
-    # Métricas Estilo TradingView
     col1, col2 = st.columns(2)
-    with col1:
-        st.metric("ORO (XAU/USD)", f"${precio:,.2f}")
-        st.metric("RSI REAL", f"{rsi:.2f}")
-    with col2:
-        st.metric("DXY (Dólar)", f"{dxy:.2f}")
-        st.write(f"SMA 200: ${sma:,.2f}")
-
-    st.divider()
-
-    # --- EL VEREDICTO ---
-    st.subheader("📢 Veredicto del Sistema")
+    col1.metric("XAU/USD (ORO)", f"${precio:,.2f}")
+    col1.metric("RSI REAL", f"{rsi:.2f}")
+    col2.write(f"**SMA 200:** ${sma:,.2f}")
     
-    # Basado en tu RSI de 38.79: "Esperar" es lo correcto
+    st.divider()
+    
+    # VEREDICTO CLARO (Basado en lo que vimos en tus capturas)
     if rsi < 32 and precio > sma:
-        st.success("🟢 COMPRA: Precio bajo en tendencia alcista.")
+        st.success("🟢 COMPRA FUERTE: Precio bajo en tendencia alcista.")
     elif rsi > 68 and precio < sma:
-        st.warning("🔴 VENTA: Precio alto en tendencia bajista.")
+        st.warning("🔴 VENTA FUERTE: Precio alto en tendencia bajista.")
     else:
-        st.info("🟡 ESPERAR: Buscando oportunidad segura...")
-
-    # --- PROTECCIÓN DE CAPITAL ---
+        st.info("🟡 ESPERAR: No hay confirmación segura todavía.")
+        
+    # GESTIÓN DE RIESGO
     st.divider()
-    st.write("### 🧮 Gestión de Riesgo ($25)")
-    sl_pips = st.slider("Stop Loss (Pips)", 10, 60, 30)
-    riesgo_usd = sl_pips * 0.1 # 0.1 USD por pip en 0.01 lotes
-    
-    if riesgo_usd > 1.25:
-        st.error(f"Riesgo de ${riesgo_usd:.2f} es muy alto para tu cuenta.")
-    else:
-        st.write(f"Si falla, pierdes: **${riesgo_usd:.2f}**")
+    sl_pips = st.slider("Stop Loss (Pips)", 10, 50, 30)
+    st.write(f"Riesgo de la operación: **${sl_pips * 0.1:.2f} USD**")
 
 else:
-    st.warning("🔄 Conectando con los servidores financieros... Espera un momento.")
-    # Forzamos una recarga si falla la primera vez
+    st.error("⚠️ Error de conexión con Yahoo Finance. Reintentando...")
     time.sleep(5)
     st.rerun()
 
-# Auto-refresh cada 15 segundos
 time.sleep(15)
 st.rerun()
