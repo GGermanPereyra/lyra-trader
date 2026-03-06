@@ -35,4 +35,3 @@ else:
     st.success("✅ Mercado Estable (Sin noticias próximas)")
     if st.button("🚀 ENTRAR AHORA (Confirmar RSI)"):
         st.write("Enviando orden micro-lote 0.01 a FBS...")
-        
