@@ -2,17 +2,19 @@ import streamlit as st
 import yfinance as yf
 import time
 
-# Configuración básica
-st.set_page_config(page_title="Monitor Germán", layout="centered")
+# Título limpio y directo
+st.set_page_config(page_title="Monitor de Oro - Germán", layout="centered")
 
-def obtener_datos():
+def obtener_datos_vivos():
     try:
-        # Usamos intervalo de 5m para que no se bloquee la conexión
-        df = yf.download("XAUUSD=X", period="1d", interval="5m", progress=False)
+        # Pedimos el Oro (XAUUSD=X) con un intervalo más estable (5 minutos)
+        oro = yf.Ticker("XAUUSD=X")
+        df = oro.history(period="1d", interval="5m")
+        
         if not df.empty:
             precio = df['Close'].iloc[-1]
             
-            # Cálculo rápido de RSI
+            # Cálculo de RSI manual (sin librerías extras que den error)
             delta = df['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -25,35 +27,34 @@ def obtener_datos():
 
 # --- INTERFAZ ---
 st.title("📊 Monitor de Oro")
-st.write(f"Cuenta: **Germán** | Capital: $25.00 USD")
+st.write(f"Operador: **Germán** | Capital: $25.00 USD")
 
-precio, rsi = obtener_datos()
+precio, rsi = obtener_datos_vivos()
 
 if precio:
-    # PRECIO REAL DE TU METATRADER
-    st.metric("XAU/USD (ORO)", f"${precio:,.2f}")
+    # Mostramos los valores que ves en tu MetaTrader
+    st.metric("PRECIO XAU/USD", f"${precio:,.2f}")
     st.metric("RSI (Fuerza)", f"{rsi:.2f}")
     
     st.divider()
     
-    # --- VEREDICTO DE TRADING ---
+    # --- EL VEREDICTO QUE BUSCÁS ---
+    # Según tu captura, el RSI está en 56.69. El bot te dirá:
     if rsi < 30:
-        st.success("🟢 COMPRAR: El precio está en descuento.")
+        st.success("🟢 COMPRAR: El precio está en zona de descuento.")
     elif rsi > 70:
-        st.warning("🔴 VENDER: El precio está muy caro.")
+        st.warning("🔴 VENDER: El precio está muy inflado.")
     else:
-        st.info("🟡 ESPERAR: No hay señal clara. Cuidá tus $25.")
+        st.info("🟡 ESPERAR: El mercado está en el medio. No arriesgues tus $25.")
 
-    # GESTIÓN DE RIESGO
     st.divider()
-    pips = st.slider("Pips de Stop Loss", 10, 50, 30)
-    st.write(f"Si la operación sale mal, perdés: **${pips * 0.1:.2f} USD**")
+    st.write("💡 *Este monitor es un apoyo para tu MetaTrader 4.*")
 
 else:
-    st.warning("Conectando con el mercado... (Dale 10 segundos)")
+    st.warning("🔄 Intentando conectar con el mercado... (Reintento automático)")
     time.sleep(10)
     st.rerun()
 
-# Refresco automático
+# Refresco cada 30 segundos
 time.sleep(30)
 st.rerun()
