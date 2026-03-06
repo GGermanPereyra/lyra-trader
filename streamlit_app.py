@@ -1,24 +1,27 @@
 import streamlit as st
 import yfinance as yf
+import pandas as pd
 import time
 
-# Título limpio y directo
-st.set_page_config(page_title="Monitor de Oro - Germán", layout="centered")
+# Título simple para Germán
+st.set_page_config(page_title="Monitor Oro - Germán", layout="centered")
 
-def obtener_datos_vivos():
+def obtener_datos_oro():
     try:
-        # Pedimos el Oro (XAUUSD=X) con un intervalo más estable (5 minutos)
-        oro = yf.Ticker("XAUUSD=X")
-        df = oro.history(period="1d", interval="5m")
+        # Intentamos obtener el ticker directamente
+        ticker = yf.Ticker("XAUUSD=X")
+        # Pedimos solo los datos de hoy para que sea ultra liviano
+        df = ticker.history(period="1d", interval="1m")
         
         if not df.empty:
             precio = df['Close'].iloc[-1]
             
-            # Cálculo de RSI manual (sin librerías extras que den error)
+            # Cálculo de RSI manual basado en los datos recibidos
             delta = df['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rsi = 100 - (100 / (1 + (gain / loss).iloc[-1]))
+            rs = gain / loss
+            rsi = 100 - (100 / (1 + rs.iloc[-1]))
             
             return precio, rsi
     except:
@@ -27,31 +30,28 @@ def obtener_datos_vivos():
 
 # --- INTERFAZ ---
 st.title("📊 Monitor de Oro")
-st.write(f"Operador: **Germán** | Capital: $25.00 USD")
+st.write(f"Cuenta: **Germán** | Capital: $25.00 USD")
 
-precio, rsi = obtener_datos_vivos()
+precio, rsi = obtener_datos_oro()
 
 if precio:
-    # Mostramos los valores que ves en tu MetaTrader
+    # Mostramos los valores reales
     st.metric("PRECIO XAU/USD", f"${precio:,.2f}")
     st.metric("RSI (Fuerza)", f"{rsi:.2f}")
     
     st.divider()
     
-    # --- EL VEREDICTO QUE BUSCÁS ---
-    # Según tu captura, el RSI está en 56.69. El bot te dirá:
+    # --- VEREDICTO DE TRADING ---
     if rsi < 30:
-        st.success("🟢 COMPRAR: El precio está en zona de descuento.")
+        st.success("🟢 COMPRAR: Precio bajo (Sobreventa).")
     elif rsi > 70:
-        st.warning("🔴 VENDER: El precio está muy inflado.")
+        st.warning("🔴 VENDER: Precio alto (Sobrecompra).")
     else:
-        st.info("🟡 ESPERAR: El mercado está en el medio. No arriesgues tus $25.")
-
-    st.divider()
-    st.write("💡 *Este monitor es un apoyo para tu MetaTrader 4.*")
+        # El RSI de 56.69 que vimos antes cae acá
+        st.info("🟡 ESPERAR: No hay señal clara. Cuidá tus $25.")
 
 else:
-    st.warning("🔄 Intentando conectar con el mercado... (Reintento automático)")
+    st.error("⚠️ Error de conexión temporal. Reintentando...")
     time.sleep(10)
     st.rerun()
 
