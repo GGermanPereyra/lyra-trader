@@ -3,57 +3,59 @@ import yfinance as yf
 import pandas as pd
 import time
 
-# Título para tu cuenta
-st.set_page_config(page_title="Monitor Germán", layout="centered")
+# Configuración de la página
+st.set_page_config(page_title="Monitor de Oro - Germán", layout="centered")
 
-def obtener_datos_seguros():
+def obtener_datos_estables():
     try:
-        # Usamos el Ticker directamente para mayor estabilidad
-        oro = yf.Ticker("XAUUSD=X")
-        # Pedimos solo los datos necesarios para el RSI
-        df = oro.history(period="2d", interval="2m")
+        # Usamos un intervalo de 2 minutos para evitar bloqueos del servidor
+        ticker = yf.Ticker("XAUUSD=X")
+        df = ticker.history(period="1d", interval="2m")
         
         if not df.empty:
-            precio = df['Close'].iloc[-1]
+            precio_actual = df['Close'].iloc[-1]
             
-            # Cálculo de RSI manual (sin librerías externas)
+            # Cálculo de RSI manual (Sin librerías externas)
             delta = df['Close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rsi = 100 - (100 / (1 + (gain / loss).iloc[-1]))
+            subidas = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            bajadas = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = subidas / bajadas
+            rsi_actual = 100 - (100 / (1 + rs.iloc[-1]))
             
-            return precio, rsi
+            return precio_actual, rsi_actual
     except:
         return None, None
     return None, None
 
-# --- INTERFAZ ---
-st.title("📊 Monitor de Oro")
-st.write(f"Operador: **Germán** | Capital: $25.00 USD")
+# --- INTERFAZ PARA GERMÁN ---
+st.title("📊 Monitor de Oro XAU/USD")
+st.write(f"Operador: **Germán** | Capital de Trabajo: $25.00 USD")
 
-precio, rsi = obtener_datos_seguros()
+precio, rsi = obtener_datos_estables()
 
 if precio:
-    # Mostramos los valores reales de tu MetaTrader
-    st.metric("PRECIO XAU/USD", f"${precio:,.2f}")
-    st.metric("RSI (Fuerza)", f"{rsi:.2f}")
+    # Métricas principales
+    col1, col2 = st.columns(2)
+    col1.metric("Precio Actual", f"${precio:,.2f}")
+    col2.metric("RSI (Fuerza)", f"{rsi:.2f}")
     
     st.divider()
     
-    # --- VEREDICTO ---
-    # Con el RSI en 56.69 (según tu captura), el sistema dirá:
-    if rsi < 32:
-        st.success("🟢 COMPRAR: Sobreventa.")
-    elif rsi > 68:
-        st.warning("🔴 VENDER: Sobrecompra.")
+    # --- LÓGICA DE TRADING SEGURA ---
+    st.subheader("📢 Veredicto del Sistema")
+    if rsi < 30:
+        st.success("🟢 COMPRA: El precio está bajo. Oportunidad para tus $25.")
+    elif rsi > 70:
+        st.warning("🔴 VENTA: El precio está muy alto. Riesgo de caída.")
     else:
-        st.info("🟡 ESPERAR: Zona neutral. Protegiendo tus $25.")
+        # El RSI de 56.69 que vimos en tu MT4 cae aquí
+        st.info("🟡 ESPERAR: Mercado neutral. No arriesgues capital sin señal.")
 
 else:
-    st.warning("🔄 Sincronizando datos... (Reintento automático)")
+    st.warning("🔄 Conectando con los servidores financieros... Por favor, espera.")
     time.sleep(10)
     st.rerun()
 
-# Refresco cada 30 segundos
+# Refresco automático cada 30 segundos
 time.sleep(30)
 st.rerun()
