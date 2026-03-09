@@ -3,30 +3,35 @@ import yfinance as yf
 import pandas as pd
 import time
 
-st.set_page_config(page_title="Monitor de Oro - Germán", layout="centered")
+st.set_page_config(page_title="Monitor Germán", layout="centered")
 
 def obtener_datos():
     try:
-        # Probamos con el símbolo más estable para Yahoo hoy
-        df = yf.download("GC=F", period="1d", interval="2m", progress=False)
+        # Usamos un Ticker con configuración para evitar bloqueos
+        ticker = yf.Ticker("GC=F")
+        # Pedimos el historial con un intervalo más largo para que no nos bloqueen
+        df = ticker.history(period="1d", interval="5m")
         
-        # Si falla, probamos con el respaldo GLD
-        if df is None or df.empty:
-            df = yf.download("GLD", period="1d", interval="2m", progress=False)
+        if df.empty:
+            # Si falla GC=F, intentamos con GLD (el respaldo)
+            df = yf.download("GLD", period="1d", interval="5m", progress=False)
 
-        if df is not None and not df.empty:
-            # Forzamos que sea un número flotante para evitar el ValueError
-            ultimo_precio = float(df['Close'].iloc[-1])
+        if not df.empty:
+            # Corrección del error de logs: usamos .iloc[0] para extraer el valor puro
+            ultimo_precio = float(df['Close'].iloc[-1:].values[0])
             
-            # Cálculo manual de RSI
+            # Cálculo de RSI manual blindado
             delta = df['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
             
-            if loss.iloc[-1] == 0:
+            last_gain = gain.iloc[-1]
+            last_loss = loss.iloc[-1]
+            
+            if last_loss == 0 or pd.isna(last_loss):
                 rsi_val = 100
             else:
-                rs = gain.iloc[-1] / loss.iloc[-1]
+                rs = last_gain / last_loss
                 rsi_val = 100 - (100 / (1 + rs))
                 
             return ultimo_precio, float(rsi_val)
@@ -35,29 +40,28 @@ def obtener_datos():
     return None, None
 
 # --- INTERFAZ ---
-st.title("📊 Monitor de Oro Real")
+st.title("📊 Monitor de Oro")
 st.write(f"Operador: **Germán** | Capital: $25.00 USD")
 
 precio, rsi = obtener_datos()
 
 if precio is not None:
-    col1, col2 = st.columns(2)
-    col1.metric("PRECIO ORO", f"${precio:,.2f}")
-    col2.metric("RSI (Fuerza)", f"{rsi:.2f}")
+    st.metric("PRECIO ORO", f"${precio:,.2f}")
+    st.metric("RSI (Fuerza)", f"{rsi:.2f}")
     
     st.divider()
     
-    # Veredicto para proteger tus $25
     if rsi < 30:
-        st.success("🟢 COMPRA: El precio está en zona de oportunidad.")
+        st.success("🟢 COMPRA: Oportunidad detectada.")
     elif rsi > 70:
-        st.warning("🔴 VENTA: El precio está muy alto.")
+        st.warning("🔴 VENTA: Riesgo de caída.")
     else:
-        st.info("🟡 ESPERAR: Zona neutral. No arriesgues capital.")
+        st.info("🟡 ESPERAR: No hay señal clara todavía.")
 else:
-    st.error("🔄 Buscando señal estable... Reintentando en 10 segundos.")
-    time.sleep(10)
+    st.error("⏳ Yahoo está saturado. Reintentando en 20 segundos...")
+    time.sleep(20)
     st.rerun()
 
-time.sleep(30)
+# Refresco más lento (60 seg) para evitar nuevos bloqueos de IP
+time.sleep(60)
 st.rerun()
