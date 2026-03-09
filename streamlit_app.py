@@ -3,30 +3,31 @@ import yfinance as yf
 import pandas as pd
 import time
 
-# Configuración de página
-st.set_page_config(page_title="Monitor de Oro - Germán", layout="centered")
+# Configuración limpia
+st.set_page_config(page_title="Monitor Oro - Germán", layout="centered")
 
 def obtener_datos_oro():
     try:
-        # Probamos con el símbolo de Futuros de Oro (GC=F) que es el más confiable
-        ticker_oro = "GC=F"
-        data = yf.download(ticker_oro, period="1d", interval="2m", progress=False)
+        # Usamos el símbolo de Futuros de Oro, que es el estándar de Yahoo hoy
+        ticker = "GC=F" 
+        df = yf.download(ticker, period="1d", interval="2m", progress=False)
         
-        if data.empty:
-            # Si falla, probamos con una alternativa común
-            data = yf.download("GLD", period="1d", interval="2m", progress=False)
+        # Si por alguna razón falla el anterior, usamos el respaldo (GLD)
+        if df.empty:
+            df = yf.download("GLD", period="1d", interval="2m", progress=False)
             
-        if not data.empty:
-            precio = data['Close'].iloc[-1]
+        if not df.empty:
+            # Extraemos el valor numérico puro para evitar el ValueError
+            precio = float(df['Close'].iloc[-1])
             
             # Cálculo de RSI manual
-            delta = data['Close'].diff()
+            delta = df['Close'].diff()
             gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
             loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rsi = 100 - (100 / (1 + (gain / loss).iloc[-1]))
+            rsi = 100 - (100 / (1 + (gain.iloc[-1] / loss.iloc[-1])))
             
             return precio, rsi
-    except:
+    except Exception as e:
         return None, None
     return None, None
 
@@ -36,22 +37,23 @@ st.write(f"Operador: **Germán** | Capital: $25.00 USD")
 
 precio, rsi = obtener_datos_oro()
 
-if precio:
-    st.metric("ORO (GC=F)", f"${precio:,.2f}")
-    st.metric("Fuerza RSI", f"{rsi:.2f}")
+if precio is not None:
+    # Mostramos los valores numéricos
+    st.metric("PRECIO ORO (GC=F)", f"${precio:,.2f}")
+    st.metric("RSI (Fuerza)", f"{rsi:.2f}")
     
     st.divider()
     
-    # Lógica de protección para tus $25
+    # --- VEREDICTO ---
     if rsi < 30:
-        st.success("🟢 COMPRA: El precio está en niveles bajos.")
+        st.success("🟢 COMPRAR: El precio está en zona de oportunidad.")
     elif rsi > 70:
-        st.warning("🔴 VENTA: El precio está muy alto.")
+        st.warning("🔴 VENDER: El precio está muy alto.")
     else:
-        st.info("🟡 ESPERAR: No hay señal clara en este momento.")
+        st.info("🟡 ESPERAR: No hay señal clara. Protegiendo capital.")
 
 else:
-    st.error("🔄 Error de servidor de datos. Reintentando con otro canal...")
+    st.error("🔄 Error de conexión con Yahoo. Reintentando en 10 segundos...")
     time.sleep(10)
     st.rerun()
 
