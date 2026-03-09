@@ -3,65 +3,64 @@ import yfinance as yf
 import pandas as pd
 import time
 
-st.set_page_config(page_title="Monitor Germán", layout="centered")
+st.set_page_config(page_title="Flash Monitor - Germán", layout="centered")
 
-def obtener_datos():
+# Función de alta velocidad sin caché para reacción inmediata
+def obtener_datos_flash():
     try:
-        # Usamos un Ticker con configuración para evitar bloqueos
-        ticker = yf.Ticker("GC=F")
-        # Pedimos el historial con un intervalo más largo para que no nos bloqueen
-        df = ticker.history(period="1d", interval="5m")
+        # Usamos el Ticker de futuros que es el más rápido en actualizar
+        oro = yf.Ticker("GC=F")
+        # Pedimos el intervalo de 1 minuto para máxima precisión
+        df = oro.history(period="1d", interval="1m")
         
-        if df.empty:
-            # Si falla GC=F, intentamos con GLD (el respaldo)
-            df = yf.download("GLD", period="1d", interval="5m", progress=False)
-
         if not df.empty:
-            # Corrección del error de logs: usamos .iloc[0] para extraer el valor puro
-            ultimo_precio = float(df['Close'].iloc[-1:].values[0])
+            precio = float(df['Close'].iloc[-1])
             
-            # Cálculo de RSI manual blindado
+            # RSI rápido (especial para scalping con $25)
             delta = df['Close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            gain = (delta.where(delta > 0, 0)).rolling(window=7).mean() # Ventana corta para rapidez
+            loss = (-delta.where(delta < 0, 0)).rolling(window=7).mean()
+            rs = gain.iloc[-1] / loss.iloc[-1]
+            rsi = 100 - (100 / (1 + rs))
             
-            last_gain = gain.iloc[-1]
-            last_loss = loss.iloc[-1]
-            
-            if last_loss == 0 or pd.isna(last_loss):
-                rsi_val = 100
-            else:
-                rs = last_gain / last_loss
-                rsi_val = 100 - (100 / (1 + rs))
-                
-            return ultimo_precio, float(rsi_val)
-    except Exception:
+            return precio, float(rsi)
+    except:
         return None, None
     return None, None
 
-# --- INTERFAZ ---
-st.title("📊 Monitor de Oro")
-st.write(f"Operador: **Germán** | Capital: $25.00 USD")
+# --- PANEL DE CONTROL ---
+st.title("⚡ Ejecución en Tiempo Real")
+st.write(f"**Operador:** Germán | **Cuenta:** $25.00 USD")
 
-precio, rsi = obtener_datos()
+precio, rsi = obtener_datos_flash()
 
-if precio is not None:
-    st.metric("PRECIO ORO", f"${precio:,.2f}")
-    st.metric("RSI (Fuerza)", f"{rsi:.2f}")
-    
+if precio:
+    # Color dinámico según el precio para alertarte rápido
+    st.metric("PRECIO XAU/USD", f"${precio:,.2f}", delta_color="normal")
+    st.progress(int(rsi) if 0 <= rsi <= 100 else 50, text=f"Fuerza del Mercado (RSI): {rsi:.2f}")
+
     st.divider()
+
+    # --- SEÑALES DE GATILLO INMEDIATO ---
+    if rsi <= 30:
+        st.success("🟢 **¡COMPRA YA! (OVER-SOLD)**")
+        st.write(f"👉 **Punto de Entrada:** ${precio:,.2f}")
+        st.write(f"🛑 **Stop Loss Obligatorio:** ${precio - 2.50:,.2f}") # Ajustado para cuenta de $25
     
-    if rsi < 30:
-        st.success("🟢 COMPRA: Oportunidad detectada.")
-    elif rsi > 70:
-        st.warning("🔴 VENTA: Riesgo de caída.")
+    elif rsi >= 70:
+        st.error("🔴 **¡VENTA YA! (OVER-BOUGHT)**")
+        st.write(f"👉 **Punto de Entrada:** ${precio:,.2f}")
+        st.write(f"🛑 **Stop Loss Obligatorio:** ${precio + 2.50:,.2f}")
+    
     else:
-        st.info("🟡 ESPERAR: No hay señal clara todavía.")
+        st.info("⚖️ **MERCADO VOLÁTIL - ESPERAR**")
+        st.write("No hay confirmación de entrada. Protegiendo tus $25.")
+
 else:
-    st.error("⏳ Yahoo está saturado. Reintentando en 20 segundos...")
-    time.sleep(20)
+    st.warning("🔄 Reintentando conexión ultra-rápida...")
+    time.sleep(5)
     st.rerun()
 
-# Refresco más lento (60 seg) para evitar nuevos bloqueos de IP
-time.sleep(60)
+# Refresco cada 30 segundos: El equilibrio perfecto entre velocidad y seguridad de IP
+time.sleep(30)
 st.rerun()
